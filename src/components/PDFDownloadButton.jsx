@@ -11,7 +11,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { Download, Loader2 } from "lucide-react";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const PDFDownloadButton = ({
   contentRef,
@@ -22,30 +22,78 @@ export const PDFDownloadButton = ({
   options = {},
 }) => {
   const [saving, setSaving] = useState(false);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    const checkImagesLoaded = async () => {
+      if (!contentRef.current) return;
+
+      const slides = contentRef.current.querySelectorAll(".embla__slide");
+      const allImages = Array.from(slides).flatMap((slide) =>
+        Array.from(slide.getElementsByTagName("img"))
+      );
+
+      // If no images, consider it loaded
+      if (allImages.length === 0) {
+        setImagesLoaded(true);
+        return;
+      }
+
+      // Check if all images are loaded
+      const areAllImagesLoaded = allImages.every((img) => img.complete);
+
+      if (areAllImagesLoaded) {
+        setImagesLoaded(true);
+      } else {
+        // Wait for images to load
+        const loadPromises = allImages.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve; // Handle error case as well
+          });
+        });
+
+        await Promise.all(loadPromises);
+        setImagesLoaded(true);
+      }
+    };
+
+    checkImagesLoaded();
+
+    // Optional: Re-check when slides change
+    const observer = new MutationObserver(checkImagesLoaded);
+    if (contentRef.current) {
+      observer.observe(contentRef.current, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    return () => observer.disconnect();
+  }, [contentRef]);
+
   const generatePDF = async () => {
-    if (!contentRef.current) return;
+    if (!contentRef.current || !imagesLoaded) return;
     setSaving(true);
 
     try {
       const pdf = new jsPDF("p", "mm", "a4");
       const slides = contentRef.current.querySelectorAll(".embla__slide");
-
-      // A4 dimensions in points (pt)
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
       for (let i = 0; i < slides.length; i++) {
         const slide = slides[i];
 
+        if (i > 0) pdf.addPage();
+
         // Create a temporary container
         const tempContainer = document.createElement("div");
         tempContainer.style.position = "absolute";
         tempContainer.style.left = "-9999px";
-        tempContainer.style.overflow = "hidden";
 
-        // Set fixed dimensions based on A4 aspect ratio
         const containerWidth = 480;
         const containerHeight = (containerWidth / pageWidth) * pageHeight;
 
@@ -57,28 +105,6 @@ export const PDFDownloadButton = ({
         const clonedSlide = slide.cloneNode(true);
         clonedSlide.style.width = "100%";
         clonedSlide.style.height = "100%";
-
-        // Special handling for the first slide (PurchaseCardImg)
-        if (i === 0) {
-          const imgElement = clonedSlide.querySelector("img");
-          if (imgElement) {
-            const imgContainer = document.createElement("div");
-            imgContainer.style.width = "100%";
-            imgContainer.style.height = "100%";
-            imgContainer.style.display = "flex";
-            imgContainer.style.alignItems = "center";
-            imgContainer.style.justifyContent = "center";
-
-            imgElement.style.maxWidth = "100%";
-            imgElement.style.maxHeight = "100%";
-            imgElement.style.objectFit = "contain";
-
-            // Wrap the image in the container
-            imgElement.parentNode.insertBefore(imgContainer, imgElement);
-            imgContainer.appendChild(imgElement);
-          }
-        }
-
         tempContainer.appendChild(clonedSlide);
 
         try {
@@ -95,13 +121,11 @@ export const PDFDownloadButton = ({
           // Clean up
           document.body.removeChild(tempContainer);
 
-          if (i > 0) pdf.addPage();
-
-          // Add the image to the PDF, maintaining aspect ratio
           const imgData = canvas.toDataURL("image/jpeg", 1.0);
           pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
         } catch (err) {
           console.error("Error processing slide:", err);
+          document.body.removeChild(tempContainer);
         }
       }
 
@@ -122,10 +146,20 @@ export const PDFDownloadButton = ({
     <>
       <Button
         onClick={generatePDF}
+        disabled={!imagesLoaded || saving}
         className="text-white px-10 py-5 rounded-full text-xl/6 h-auto font-normal"
       >
-        {buttonText}
-        <Download className="w-8 h-8 ml-2 text-primary rounded-full shrink-0 p-2 bg-[#EAE2FF]" />
+        {!imagesLoaded ? (
+          <>
+            Loading...
+            <Loader2 className="w-8 h-8 ml-2 animate-spin" />
+          </>
+        ) : (
+          <>
+            {buttonText}
+            <Download className="w-8 h-8 ml-2 text-primary rounded-full shrink-0 p-2 bg-[#EAE2FF]" />
+          </>
+        )}
       </Button>
 
       <Dialog open={saving} onOpenChange={setSaving}>
