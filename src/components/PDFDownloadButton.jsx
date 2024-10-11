@@ -25,6 +25,7 @@ export const PDFDownloadButton = ({
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const { toast } = useToast();
 
+  // Check if images within contentRef are fully loaded
   useEffect(() => {
     const checkImagesLoaded = async () => {
       if (!contentRef.current) return;
@@ -34,24 +35,21 @@ export const PDFDownloadButton = ({
         Array.from(slide.getElementsByTagName("img"))
       );
 
-      // If no images, consider it loaded
       if (allImages.length === 0) {
         setImagesLoaded(true);
         return;
       }
 
-      // Check if all images are loaded
       const areAllImagesLoaded = allImages.every((img) => img.complete);
 
       if (areAllImagesLoaded) {
         setImagesLoaded(true);
       } else {
-        // Wait for images to load
         const loadPromises = allImages.map((img) => {
           if (img.complete) return Promise.resolve();
           return new Promise((resolve) => {
             img.onload = resolve;
-            img.onerror = resolve; // Handle error case as well
+            img.onerror = resolve;
           });
         });
 
@@ -62,7 +60,6 @@ export const PDFDownloadButton = ({
 
     checkImagesLoaded();
 
-    // Optional: Re-check when slides change
     const observer = new MutationObserver(checkImagesLoaded);
     if (contentRef.current) {
       observer.observe(contentRef.current, {
@@ -74,58 +71,100 @@ export const PDFDownloadButton = ({
     return () => observer.disconnect();
   }, [contentRef]);
 
+  // Generate PDF function
   const generatePDF = async () => {
-    if (!contentRef.current || !imagesLoaded) return;
+    if (!contentRef.current || !imagesLoaded) {
+      toast({
+        title: "Error",
+        description: "Images are still loading. Please wait.",
+        variant: "warning",
+      });
+      return;
+    }
     setSaving(true);
 
     try {
       const pdf = new jsPDF("p", "mm", "a4");
       const slides = contentRef.current.querySelectorAll(".embla__slide");
+
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
       for (let i = 0; i < slides.length; i++) {
         const slide = slides[i];
 
-        if (i > 0) pdf.addPage();
-
-        // Create a temporary container
+        // Create a temporary container for each slide
         const tempContainer = document.createElement("div");
+        tempContainer.style.width = "480px";
+        tempContainer.style.height = "678px";
         tempContainer.style.position = "absolute";
         tempContainer.style.left = "-9999px";
-
-        const containerWidth = 480;
-        const containerHeight = (containerWidth / pageWidth) * pageHeight;
-
-        tempContainer.style.width = `${containerWidth}px`;
-        tempContainer.style.height = `${containerHeight}px`;
+        tempContainer.style.overflow = "hidden";
         document.body.appendChild(tempContainer);
 
-        // Clone the slide content
         const clonedSlide = slide.cloneNode(true);
         clonedSlide.style.width = "100%";
         clonedSlide.style.height = "100%";
+
+        // Adjust the first slide (cover image)
+        if (i === 0) {
+          const imgElement = clonedSlide.querySelector("img");
+          if (imgElement) {
+            imgElement.style.width = "100%";
+            imgElement.style.height = "100%";
+            imgElement.style.objectFit = "cover";
+          }
+        }
+
         tempContainer.appendChild(clonedSlide);
 
         try {
           const canvas = await html2canvas(tempContainer, {
-            scale: 2,
+            scale: 3, // Increased scale for better quality
             useCORS: true,
             logging: false,
             backgroundColor: null,
-            windowWidth: containerWidth,
-            windowHeight: containerHeight,
+            windowWidth: 480,
+            windowHeight: 678,
             ...options.html2canvasOptions,
           });
 
-          // Clean up
+          // Clean up temp container
           document.body.removeChild(tempContainer);
 
-          const imgData = canvas.toDataURL("image/jpeg", 1.0);
-          pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+          if (i > 0) pdf.addPage();
+
+          const imgAspectRatio = canvas.width / canvas.height;
+          const pageAspectRatio = pageWidth / pageHeight;
+
+          let renderWidth = pageWidth;
+          let renderHeight = pageHeight;
+
+          if (imgAspectRatio > pageAspectRatio) {
+            renderHeight = pageWidth / imgAspectRatio;
+          } else {
+            renderWidth = pageHeight * imgAspectRatio;
+          }
+
+          const xOffset = (pageWidth - renderWidth) / 2;
+          const yOffset = (pageHeight - renderHeight) / 2;
+
+          const imgData = canvas.toDataURL("image/jpeg", 0.8); // Reduced quality for memory optimization
+          pdf.addImage(
+            imgData,
+            "JPEG",
+            xOffset,
+            yOffset,
+            renderWidth,
+            renderHeight
+          );
         } catch (err) {
           console.error("Error processing slide:", err);
-          document.body.removeChild(tempContainer);
+          toast({
+            title: "Error",
+            description: `Error processing slide ${i + 1}: ${err.message}`,
+            variant: "destructive",
+          });
         }
       }
 
