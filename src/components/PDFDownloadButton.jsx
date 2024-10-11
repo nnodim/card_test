@@ -109,6 +109,7 @@ export const PDFDownloadButton = ({
         // Adjust the first slide (cover image)
         if (i === 0) {
           const imgElement = clonedSlide.querySelector("img");
+
           if (imgElement) {
             imgElement.style.width = "100%";
             imgElement.style.height = "100%";
@@ -119,6 +120,7 @@ export const PDFDownloadButton = ({
         tempContainer.appendChild(clonedSlide);
 
         try {
+          // Improved performance using willReadFrequently
           const canvas = await html2canvas(tempContainer, {
             scale: 3, // Increased scale for better quality
             useCORS: true,
@@ -126,6 +128,7 @@ export const PDFDownloadButton = ({
             backgroundColor: null,
             windowWidth: 480,
             windowHeight: 678,
+            willReadFrequently: true, // Add this to improve getImageData performance
             ...options.html2canvasOptions,
           });
 
