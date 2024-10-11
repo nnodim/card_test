@@ -25,8 +25,6 @@ export const PDFDownloadButton = ({
   const { toast } = useToast();
 
   const generatePDF = async () => {
-    console.log(options);
-    
     if (!contentRef.current) return;
     setSaving(true);
 
@@ -38,34 +36,59 @@ export const PDFDownloadButton = ({
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
 
-      console.log(pageWidth, pageHeight);
-      
-
       for (let i = 0; i < slides.length; i++) {
         const slide = slides[i];
 
-        // Force consistent dimensions for canvas
+        // Create a temporary container
         const tempContainer = document.createElement("div");
-        tempContainer.style.width = options.width || "480px";
-        tempContainer.style.height = options.height || "678px";
         tempContainer.style.position = "absolute";
         tempContainer.style.left = "-9999px";
+        tempContainer.style.overflow = "hidden";
+
+        // Set fixed dimensions based on A4 aspect ratio
+        const containerWidth = 480;
+        const containerHeight = (containerWidth / pageWidth) * pageHeight;
+
+        tempContainer.style.width = `${containerWidth}px`;
+        tempContainer.style.height = `${containerHeight}px`;
         document.body.appendChild(tempContainer);
 
-        // Clone the slide content into our temp container
+        // Clone the slide content
         const clonedSlide = slide.cloneNode(true);
         clonedSlide.style.width = "100%";
         clonedSlide.style.height = "100%";
+
+        // Special handling for the first slide (PurchaseCardImg)
+        if (i === 0) {
+          const imgElement = clonedSlide.querySelector("img");
+          if (imgElement) {
+            const imgContainer = document.createElement("div");
+            imgContainer.style.width = "100%";
+            imgContainer.style.height = "100%";
+            imgContainer.style.display = "flex";
+            imgContainer.style.alignItems = "center";
+            imgContainer.style.justifyContent = "center";
+
+            imgElement.style.maxWidth = "100%";
+            imgElement.style.maxHeight = "100%";
+            imgElement.style.objectFit = "contain";
+
+            // Wrap the image in the container
+            imgElement.parentNode.insertBefore(imgContainer, imgElement);
+            imgContainer.appendChild(imgElement);
+          }
+        }
+
         tempContainer.appendChild(clonedSlide);
 
         try {
           const canvas = await html2canvas(tempContainer, {
-            scale: options.scale || 2,
+            scale: 2,
             useCORS: true,
             logging: false,
             backgroundColor: null,
-            windowWidth: parseInt(options.width) || 480,
-            windowHeight: parseInt(options.height) || 678,
+            windowWidth: containerWidth,
+            windowHeight: containerHeight,
             ...options.html2canvasOptions,
           });
 
@@ -74,35 +97,11 @@ export const PDFDownloadButton = ({
 
           if (i > 0) pdf.addPage();
 
-          // Calculate scaling to fit the page while maintaining aspect ratio
-          const imgAspectRatio = canvas.width / canvas.height;
-          const pageAspectRatio = pageWidth / pageHeight;
-
-          let renderWidth = pageWidth;
-          let renderHeight = pageHeight;
-
-          if (imgAspectRatio > pageAspectRatio) {
-            renderHeight = pageWidth / imgAspectRatio;
-          } else {
-            renderWidth = pageHeight * imgAspectRatio;
-          }
-
-          // Center the image on the page
-          const xOffset = (pageWidth - renderWidth) / 2;
-          const yOffset = (pageHeight - renderHeight) / 2;
-
+          // Add the image to the PDF, maintaining aspect ratio
           const imgData = canvas.toDataURL("image/jpeg", 1.0);
-          pdf.addImage(
-            imgData,
-            "JPEG",
-            xOffset,
-            yOffset,
-            renderWidth,
-            renderHeight
-          );
+          pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
         } catch (err) {
           console.error("Error processing slide:", err);
-          // Continue with next slide if one fails
         }
       }
 
@@ -149,7 +148,7 @@ export const PDFDownloadButton = ({
 };
 
 PDFDownloadButton.propTypes = {
-  contentRef: PropTypes.object,
+  contentRef: PropTypes.object.isRequired,
   filename: PropTypes.string,
   buttonText: PropTypes.string,
   dialogTitle: PropTypes.string,
