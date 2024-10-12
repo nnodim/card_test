@@ -294,7 +294,7 @@ export const Sign = () => {
   const onSubmit = useCallback(
     (data) => {
       if (!editor) return;
-            const { id, x, y, width, height, rotation } = editingMessage;
+      const { id, x, y, width, height, rotation } = editingMessage;
       const messageContent = editor.getJSON();
       const currentPage = current - 1;
       const isLastPage = currentPage === maxPage;
@@ -366,11 +366,20 @@ Drag and drop your signature to a free spot or Change pages by using the arrows 
         message: message,
         fontFamily:
           editor.getAttributes("textStyle").fontFamily || "sans-serif",
-        fontSize: (typeof(editor.getAttributes("textStyle").fontSize) === "object") ? "16px" : editor.getAttributes("textStyle").fontSize || "16px",
+        fontSize:
+          typeof editor.getAttributes("textStyle").fontSize === "object"
+            ? "16px"
+            : editor.getAttributes("textStyle").fontSize || "16px",
         fontColor: editor.getAttributes("textStyle").color || "#000000",
         bgColor:
-          (typeof(editor.getAttributes("textStyle").backgroundColor) === "object") ? "transparent" : editor.getAttributes("textStyle").backgroundColor || "transparent",
+          typeof editor.getAttributes("textStyle").backgroundColor === "object"
+            ? "transparent"
+            : editor.getAttributes("textStyle").backgroundColor ||
+              "transparent",
         textAlign: editor.getAttributes("paragraph").textAlign || "left",
+        bold: editor.isActive("bold") || false,
+        italic: editor.isActive("italic") || false,
+        strikeThrough: editor.isActive("strike") || false,
         page: current - 1,
       };
 

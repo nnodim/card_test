@@ -16,9 +16,9 @@ import { useToast } from "@/components/ui/use-toast";
 import useAxiosPrivate from "@/hooks/useAxioPrivate";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { debounce } from "lodash";
 import DOMPurify from "dompurify";
 import parse from "html-react-parser";
-import { debounce } from "lodash";
 import { CircleAlert, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Realistic from "react-canvas-confetti/dist/presets/realistic";
@@ -87,7 +87,7 @@ export const ViewCard = () => {
       resizeObserver.disconnect();
       debouncedUpdateDimensions.cancel();
     };
-  }, [parentRef]);
+  }, [parentRef.current]);
 
   useEffect(() => {
     if (messages && messages.length > 0) {
@@ -275,6 +275,7 @@ export const ViewCard = () => {
           <PDFDownloadButton
             contentRef={carouselRef}
             filename="cards.pdf"
+            messages={messages}
             options={{
               width,
               height,
