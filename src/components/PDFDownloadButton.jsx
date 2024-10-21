@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   Document,
   Font,
-  Image,
+  Image as PDFImage,
   Page,
   pdf,
   Text,
@@ -30,42 +30,23 @@ import {
   RegularFont,
 } from "@/fonts/Montserrat/static";
 
-Font.register(
-  {
-    family: "Montserrat",
-    fonts: [
-      {
-        src: RegularFont,
-      },
-      {
-        src: BoldFont,
-        fontWeight: "bold",
-      },
-      {
-        src: BoldItalicFont,
-        fontWeight: "bold",
-        fontStyle: "italic",
-      },
-    ],
-  },
-  {
-    family: "sans-serif",
-    fonts: [
-      {
-        src: "https://fonts.gstatic.com/s/sans-serif/v15/4UaGrENHsxJlGDuGo6OEBLPM.ttf",
-      },
-      {
-        src: "https://fonts.gstatic.com/s/sans-serif/v15/4UaGrENHsxJlGDuGo6OEBLPM.ttf",
-        fontWeight: "bold",
-      },
-      {
-        src: "https://fonts.gstatic.com/s/sans-serif/v15/4UaGrENHsxJlGDuGo6OEBLPM.ttf",
-        fontWeight: "bold",
-        fontStyle: "italic",
-      },
-    ],
-  }
-);
+Font.register({
+  family: "Montserrat",
+  fonts: [
+    {
+      src: RegularFont,
+    },
+    {
+      src: BoldFont,
+      fontWeight: "bold",
+    },
+    {
+      src: BoldItalicFont,
+      fontWeight: "bold",
+      fontStyle: "italic",
+    },
+  ],
+});
 
 export const PDFDownloadButton = ({
   contentRef,
@@ -73,6 +54,7 @@ export const PDFDownloadButton = ({
   buttonText = "Save as PDF",
   dialogTitle = "Saving as PDF",
   dialogDescription = "Please wait...",
+  cardData,
   options = {},
   messages,
 }) => {
@@ -88,8 +70,6 @@ export const PDFDownloadButton = ({
       options.width / baseWidth,
       options.height / baseHeight
     );
-
-    console.log(message);
 
     return {
       position: "absolute",
@@ -152,119 +132,6 @@ export const PDFDownloadButton = ({
 
     return () => observer.disconnect();
   }, [contentRef]);
-
-  // Generate PDF function
-  // const generatePDF = async () => {
-  //   if (!contentRef.current || !imagesLoaded) {
-  //     toast({
-  //       title: "Error",
-  //       description: "Images are still loading. Please wait.",
-  //       variant: "warning",
-  //     });
-  //     return;
-  //   }
-  //   setSaving(true);
-
-  //   try {
-  //     const pdf = new jsPDF("p", "mm", "a4");
-  //     const slides = contentRef.current.querySelectorAll(".embla__slide");
-
-  //     const pageWidth = pdf.internal.pageSize.getWidth();
-  //     const pageHeight = pdf.internal.pageSize.getHeight();
-
-  //     for (let i = 0; i < slides.length; i++) {
-  //       const slide = slides[i];
-
-  //       // Create a temporary container for each slide
-  //       const tempContainer = document.createElement("div");
-  //       tempContainer.style.width = "480px";
-  //       tempContainer.style.height = "678px";
-  //       tempContainer.style.position = "absolute";
-  //       tempContainer.style.left = "-9999px";
-  //       tempContainer.style.overflow = "hidden";
-  //       document.body.appendChild(tempContainer);
-
-  //       const clonedSlide = slide.cloneNode(true);
-  //       clonedSlide.style.width = "100%";
-  //       clonedSlide.style.height = "100%";
-
-  //       // Adjust the first slide (cover image)
-  //       if (i === 0) {
-  //         const imgElement = clonedSlide.querySelector("img");
-
-  //         if (imgElement) {
-  //           imgElement.style.width = "100%";
-  //           imgElement.style.height = "100%";
-  //           imgElement.style.objectFit = "cover";
-  //         }
-  //       }
-
-  //       tempContainer.appendChild(clonedSlide);
-
-  //       try {
-  //         // Improved performance using willReadFrequently
-  //         const canvas = await html2canvas(tempContainer, {
-  //           scale: 3, // Increased scale for better quality
-  //           useCORS: true,
-  //           logging: false,
-  //           backgroundColor: null,
-  //           windowWidth: 480,
-  //           windowHeight: 678,
-  //           willReadFrequently: true, // Add this to improve getImageData performance
-  //           ...options.html2canvasOptions,
-  //         });
-
-  //         // Clean up temp container
-  //         document.body.removeChild(tempContainer);
-
-  //         if (i > 0) pdf.addPage();
-
-  //         const imgAspectRatio = canvas.width / canvas.height;
-  //         const pageAspectRatio = pageWidth / pageHeight;
-
-  //         let renderWidth = pageWidth;
-  //         let renderHeight = pageHeight;
-
-  //         if (imgAspectRatio > pageAspectRatio) {
-  //           renderHeight = pageWidth / imgAspectRatio;
-  //         } else {
-  //           renderWidth = pageHeight * imgAspectRatio;
-  //         }
-
-  //         const xOffset = (pageWidth - renderWidth) / 2;
-  //         const yOffset = (pageHeight - renderHeight) / 2;
-
-  //         const imgData = canvas.toDataURL("image/jpeg", 0.8); // Reduced quality for memory optimization
-  //         pdf.addImage(
-  //           imgData,
-  //           "JPEG",
-  //           xOffset,
-  //           yOffset,
-  //           renderWidth,
-  //           renderHeight
-  //         );
-  //       } catch (err) {
-  //         console.error("Error processing slide:", err);
-  //         toast({
-  //           title: "Error",
-  //           description: `Error processing slide ${i + 1}: ${err.message}`,
-  //           variant: "destructive",
-  //         });
-  //       }
-  //     }
-
-  //     pdf.save(filename);
-  //   } catch (error) {
-  //     console.error("Error generating PDF:", error);
-  //     toast({
-  //       title: "Error",
-  //       description: "Failed to generate PDF. Please try again.",
-  //       variant: "destructive",
-  //     });
-  //   } finally {
-  //     setSaving(false);
-  //   }
-  // };
 
   const convertHTMLToPDFText = (htmlString) => {
     const tempDiv = document.createElement("div");
@@ -359,92 +226,214 @@ export const PDFDownloadButton = ({
     return cleanedSections;
   };
 
-  // PDF generation part of the code remains the same
-  const generatePDF = async () => {
-    try {
-      if (!contentRef.current) return;
-      setSaving(true);
+  const convertImageToPng = async (src) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous"; // This is necessary for some external images
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = src;
+    });
+  };
 
-      const slides = Array.from(
-        contentRef.current.querySelectorAll(".embla__slide")
-      );
+  const convertSvgToPng = async (svgUrl) => {
+    const response = await fetch(svgUrl);
+    const svgText = await response.text();
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+    const svgElement = svgDoc.documentElement;
 
-      const pdfDoc = (
-        <Document>
-          {slides.map((slide, index) => (
-            <Page key={index} size="A4">
-              <View style={{ width: "100%", height: "100%" }}>
-                <Image src={cardBg} style={{ width: "100%", height: "100%" }} />
-                {messages &&
-                  messages
-                    .filter(({ page }) => page === index)
-                    .map((message, messageIndex) => {
-                      const {
-                        content,
-                        x,
-                        y,
-                        width,
-                        height,
-                        fontColor,
-                        textAlign,
-                        fontSize,
-                        fontFamily,
-                        bold,
-                        italic,
-                        type,
-                      } = message;
+    // Get the viewBox attributes
+    const viewBox = svgElement.getAttribute("viewBox");
+    const [, , width, height] = viewBox
+      ? viewBox.split(" ").map(Number)
+      : [null, null, 1000, 1000];
 
-                      const viewStyle = calculateResponsiveStyles({
-                        x,
-                        y,
-                        width,
-                        height,
-                        fontColor,
-                        textAlign,
-                        fontSize,
-                        fontFamily,
-                        bold,
-                        italic,
-                      });
+    // Create a high-resolution canvas
+    const canvas = document.createElement("canvas");
+    const scale = 2; // Increase this for higher resolution
+    canvas.width = width * scale;
+    canvas.height = height * scale;
 
-                      if (type === "text") {
-                        const textSections = convertHTMLToPDFText(content);
+    const ctx = canvas.getContext("2d");
+    const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
 
-                        return (
-                          <View key={messageIndex} style={viewStyle}>
-                            <Text
-                              style={{
-                                color: fontColor,
-                                fontSize: parseInt(fontSize),
-                                textAlign: textAlign,
-                                lineHeight: 1.5, // Added for better readability
-                              }}
-                            >
-                              {textSections.map((section, i) => (
-                                <Text key={i} style={section.style}>
-                                  {section.text}
-                                </Text>
-                              ))}
-                            </Text>
-                          </View>
-                        );
-                      } else {
-                        return (
-                          <View key={messageIndex} style={viewStyle}>
-                            <Image
-                              src={content}
-                              style={{ width: "100%", height: "100%" }}
-                            />
-                          </View>
-                        );
-                      }
-                    })}
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/png"));
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
+
+  const prepareImageForPdf = async (src) => {
+    const fileExtension = src.split(".").pop().toLowerCase();
+    if (fileExtension === "gif") {
+      return await convertImageToPng(src);
+    } else if (fileExtension === "svg") {
+      return await convertSvgToPng(src);
+    }
+    return src; // Return original source for other image types
+  };
+
+  const generatePDFContent = async (cardData, messages, options) => {
+    // Convert card image if necessary
+    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
+
+    // Convert custom images if present
+    const customImages = await Promise.all(
+      (cardData.card.meta?.images || []).map(async (image) => ({
+        ...image,
+        content: await prepareImageForPdf(image.content),
+      }))
+    );
+
+    // Convert message images
+    const preparedMessages = await Promise.all(
+      messages.map(async (message) => {
+        if (message.type === "text") {
+          return message;
+        }
+        return {
+          ...message,
+          content: await prepareImageForPdf(message.content),
+        };
+      })
+    );
+
+    return (
+      <Document>
+        {/* First page with card design and custom details */}
+        <Page size="A4">
+          <View style={{ width: "100%", height: "100%" }}>
+            <PDFImage
+              src={cardImageSrc}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+            {cardData.card.meta?.message && (
+              <View
+                style={{
+                  position: "absolute",
+                  left: `${(cardData.card.meta.message.x / 480) * 100}%`,
+                  top: `${(cardData.card.meta.message.y / 678) * 100}%`,
+                  width: `${(cardData.card.meta.message.width / 480) * 100}%`,
+                  height: `${(cardData.card.meta.message.height / 678) * 100}%`,
+                }}
+              >
+                <Text
+                  style={{
+                    // fontFamily: cardData.card.meta.message.fontFamily,
+                    fontSize: cardData.card.meta.message.fontSize,
+                    color: cardData.card.meta.message.color,
+                    textAlign: cardData.card.meta.message.textAlign,
+                    fontWeight: cardData.card.meta.message.bold
+                      ? "bold"
+                      : "normal",
+                    fontStyle: cardData.card.meta.message.italic
+                      ? "italic"
+                      : "normal",
+                    textDecoration: cardData.card.meta.message.strikeThrough
+                      ? "line-through"
+                      : "none",
+                  }}
+                >
+                  {cardData.card.meta.message.name}
+                </Text>
               </View>
-            </Page>
-          ))}
-        </Document>
-      );
+            )}
+            {customImages.map((image, index) => (
+              <View
+                key={index}
+                style={{
+                  position: "absolute",
+                  left: `${(image.x / 480) * 100}%`,
+                  top: `${(image.y / 670) * 100}%`,
+                  width: `${(image.width / 480) * 100}%`,
+                  height: `${(image.height / 670) * 100}%`,
+                }}
+              >
+                <PDFImage
+                  src={image.content}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+        </Page>
+        {/* Subsequent pages with messages */}
+        {Array.from({
+          length: Math.max(...preparedMessages.map((msg) => msg.page)),
+        }).map((_, index) => (
+          <Page key={index + 1} size="A4">
+            <View style={{ width: "100%", height: "100%" }}>
+              <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
+              {preparedMessages
+                .filter(({ page }) => page === index + 1)
+                .map((message, messageIndex) => {
+                  const viewStyle = calculateResponsiveStyles(message, options);
 
+                  if (message.type === "text") {
+                    const textSections = convertHTMLToPDFText(message.content);
+
+                    return (
+                      <View key={messageIndex} style={viewStyle}>
+                        <Text
+                          style={{
+                            color: message.fontColor,
+                            fontSize: parseInt(message.fontSize),
+                            textAlign: message.textAlign,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {textSections.map((section, i) => (
+                            <Text key={i} style={section.style}>
+                              {section.text}
+                            </Text>
+                          ))}
+                        </Text>
+                      </View>
+                    );
+                  } else {
+                    return (
+                      <View key={messageIndex} style={viewStyle}>
+                        <PDFImage
+                          src={message.content}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                          }}
+                        />
+                      </View>
+                    );
+                  }
+                })}
+            </View>
+          </Page>
+        ))}
+      </Document>
+    );
+  };
+
+  const generatePDF = async (cardData, messages, options) => {
+    try {
+      const pdfDoc = await generatePDFContent(cardData, messages, options);
       const blob = await pdf(pdfDoc).toBlob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -452,6 +441,21 @@ export const PDFDownloadButton = ({
       a.download = "cards.pdf";
       a.click();
       URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      throw error;
+    }
+  };
+
+  const handleGeneratePDF = async () => {
+    try {
+      setSaving(true);
+      await generatePDF(cardData, messages, options);
+      toast({
+        title: "Success",
+        description: "PDF generated successfully",
+        variant: "success",
+      });
     } catch (error) {
       console.error("Error generating PDF:", error);
       toast({
@@ -467,7 +471,7 @@ export const PDFDownloadButton = ({
   return (
     <>
       <Button
-        onClick={generatePDF}
+        onClick={handleGeneratePDF}
         disabled={!imagesLoaded || saving}
         className="text-white px-10 py-5 rounded-full text-xl/6 h-auto font-normal"
       >
@@ -510,5 +514,6 @@ PDFDownloadButton.propTypes = {
   dialogTitle: PropTypes.string,
   dialogDescription: PropTypes.string,
   options: PropTypes.object,
+  cardData: PropTypes.object.isRequired,
   messages: PropTypes.array,
 };

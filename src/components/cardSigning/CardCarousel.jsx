@@ -143,6 +143,7 @@ Drag and drop your signature to a free spot or Change pages by using the arrows 
         <PDFDownloadButton
           contentRef={carouselRef}
           filename="cards.pdf"
+          cardData={card}
           options={{
             width: "480px",
             height: "678px",

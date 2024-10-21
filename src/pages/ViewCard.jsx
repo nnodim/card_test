@@ -276,6 +276,7 @@ export const ViewCard = () => {
             contentRef={carouselRef}
             filename="cards.pdf"
             messages={messages}
+            cardData={cardData}
             options={{
               width,
               height,
