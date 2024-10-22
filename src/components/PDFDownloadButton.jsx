@@ -8,27 +8,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  Document,
-  Font,
-  Image as PDFImage,
-  Page,
-  pdf,
-  Text,
-  View,
-} from "@react-pdf/renderer";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import { Download, Loader2 } from "lucide-react";
-import PropTypes from "prop-types";
-import DOMPurify from "dompurify";
-import parse from "html-react-parser";
-import { useEffect, useState } from "react";
+import { FlamencoRegular } from "@/fonts/Flamenco";
 import {
   BoldFont,
   BoldItalicFont,
   RegularFont,
 } from "@/fonts/Montserrat/static";
+import {
+  Document,
+  Font,
+  Page,
+  pdf,
+  Image as PDFImage,
+  Text,
+  View,
+} from "@react-pdf/renderer";
+import DOMPurify from "dompurify";
+import { Download, Loader2 } from "lucide-react";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 Font.register({
   family: "Montserrat",
@@ -46,6 +44,11 @@ Font.register({
       fontStyle: "italic",
     },
   ],
+});
+
+Font.register({
+  family: "Flamenco",
+  src: FlamencoRegular
 });
 
 export const PDFDownloadButton = ({
@@ -244,49 +247,153 @@ export const PDFDownloadButton = ({
   };
 
   const convertSvgToPng = async (svgUrl) => {
-    const response = await fetch(svgUrl);
-    const svgText = await response.text();
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
-    const svgElement = svgDoc.documentElement;
+    try {
+      // First try to fetch the SVG content
+      const response = await fetch(svgUrl);
+      if (!response.ok) throw new Error("Failed to fetch SVG");
 
-    // Get the viewBox attributes
-    const viewBox = svgElement.getAttribute("viewBox");
-    const [, , width, height] = viewBox
-      ? viewBox.split(" ").map(Number)
-      : [null, null, 1000, 1000];
+      const svgText = await response.text();
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+      const svgElement = svgDoc.documentElement;
 
-    // Create a high-resolution canvas
-    const canvas = document.createElement("canvas");
-    const scale = 2; // Increase this for higher resolution
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+      if (svgDoc.getElementsByTagName("parsererror").length > 0) {
+        throw new Error("Invalid SVG content");
+      }
 
-    const ctx = canvas.getContext("2d");
-    const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
+      // Get dimensions with fallbacks
+      const viewBox = svgElement.getAttribute("viewBox");
+      let width = svgElement.getAttribute("width");
+      let height = svgElement.getAttribute("height");
 
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/png"));
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
+      if (viewBox) {
+        const [, , vbWidth, vbHeight] = viewBox.split(" ").map(Number);
+        width = width || vbWidth;
+        height = height || vbHeight;
+      }
+
+      // Fallback dimensions if still not set
+      width = width || 1000;
+      height = height || 1000;
+
+      // Create canvas with proper dimensions
+      const canvas = document.createElement("canvas");
+      const scale = window.devicePixelRatio || 2; // Account for device pixel ratio
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Cannot get canvas context");
+
+      ctx.scale(scale, scale);
+
+      // Convert SVG to data URL
+      const svgBlob = new Blob([svgText], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const url = URL.createObjectURL(svgBlob);
+
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+
+        img.onload = () => {
+          try {
+            ctx.drawImage(img, 0, 0, width, height);
+            const pngDataUrl = canvas.toDataURL("image/png");
+            URL.revokeObjectURL(url);
+            resolve(pngDataUrl);
+          } catch (error) {
+            reject(new Error(`Failed to draw image: ${error.message}`));
+          }
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Failed to load SVG image"));
+        };
+
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+          URL.revokeObjectURL(url);
+          reject(new Error("SVG loading timed out"));
+        }, 5000);
+
+        img.onload = () => {
+          clearTimeout(timeout);
+          try {
+            ctx.drawImage(img, 0, 0, width, height);
+            const pngDataUrl = canvas.toDataURL("image/png");
+            URL.revokeObjectURL(url);
+            resolve(pngDataUrl);
+          } catch (error) {
+            reject(new Error(`Failed to draw image: ${error.message}`));
+          }
+        };
+
+        img.src = url;
+      });
+    } catch (error) {
+      console.error("SVG conversion error:", error);
+      throw new Error(`Failed to convert SVG: ${error.message}`);
+    }
   };
 
   const prepareImageForPdf = async (src) => {
-    const fileExtension = src.split(".").pop().toLowerCase();
-    if (fileExtension === "gif") {
-      return await convertImageToPng(src);
-    } else if (fileExtension === "svg") {
-      return await convertSvgToPng(src);
+    try {
+      if (!src) throw new Error("Invalid image source");
+
+      const fileExtension = src.split(".").pop().toLowerCase();
+
+      if (fileExtension === "svg") {
+        return await convertSvgToPng(src);
+      } else if (fileExtension === "gif") {
+        return await convertImageToPng(src);
+        // Use canvas to convert GIF to PNG
+        // const img = new Image();
+        // img.crossOrigin = "anonymous";
+
+        // return new Promise((resolve, reject) => {
+        //   const timeout = setTimeout(() => {
+        //     reject(new Error("Image loading timed out"));
+        //   }, 5000);
+
+        //   img.onload = () => {
+        //     clearTimeout(timeout);
+        //     const canvas = document.createElement("canvas");
+        //     canvas.width = img.width;
+        //     canvas.height = img.height;
+        //     const ctx = canvas.getContext("2d");
+        //     ctx.drawImage(img, 0, 0);
+        //     resolve(canvas.toDataURL("image/png"));
+        //   };
+
+        //   img.onerror = () => {
+        //     clearTimeout(timeout);
+        //     reject(new Error("Failed to load image"));
+        //   };
+
+        //   img.src = src;
+        // });
+      }
+
+      // For other image types, return the original source
+      return src;
+    } catch (error) {
+      console.error("Image preparation error:", error);
+      throw new Error(`Failed to prepare image: ${error.message}`);
     }
-    return src; // Return original source for other image types
   };
+
+
+  // const prepareImageForPdf = async (src) => {
+  //   const fileExtension = src.split(".").pop().toLowerCase();
+  //   if (fileExtension === "gif") {
+  //     return await convertImageToPng(src);
+  //   } else if (fileExtension === "svg") {
+  //     return await convertSvgToPng(src);
+  //   }
+  //   return src; // Return original source for other image types
+  // };
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
@@ -457,10 +564,11 @@ export const PDFDownloadButton = ({
         variant: "success",
       });
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      console.error("PDF generation error:", error);
       toast({
         title: "Error",
-        description: "Failed to generate PDF. Please try again.",
+        description:
+          error.message || "Failed to generate PDF. Please try again.",
         variant: "destructive",
       });
     } finally {
