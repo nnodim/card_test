@@ -8,27 +8,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { FlamencoRegular } from "@/fonts/Flamenco";
+import {
+  Document,
+  Font,
+  Image as PDFImage,
+  Page,
+  pdf,
+  Text,
+  View,
+} from "@react-pdf/renderer";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { Download, Loader2 } from "lucide-react";
+import PropTypes from "prop-types";
+import DOMPurify from "dompurify";
+import parse from "html-react-parser";
+import { useEffect, useState } from "react";
 import {
   BoldFont,
   BoldItalicFont,
   RegularFont,
 } from "@/fonts/Montserrat/static";
-import {
-  Document,
-  Font,
-  Page,
-  pdf,
-  Image as PDFImage,
-  Text,
-  View,
-} from "@react-pdf/renderer";
-import DOMPurify from "dompurify";
-import { Download, Loader2 } from "lucide-react";
-import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
-
-const imageCache = new Map();
 
 Font.register({
   family: "Montserrat",
@@ -46,11 +46,6 @@ Font.register({
       fontStyle: "italic",
     },
   ],
-});
-
-Font.register({
-  family: "Flamenco",
-  src: FlamencoRegular
 });
 
 export const PDFDownloadButton = ({
@@ -248,188 +243,35 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const convertSvgToImg = async (svgUrl) => {
-    try {
-      // Check cache first
-      if (imageCache.has(svgUrl)) {
-        return imageCache.get(svgUrl);
-      }
-
-      // Fetch SVG content with proper headers
-      const response = await fetch(svgUrl, {
-        headers: {
-          Accept: "image/svg+xml,image/*",
-          "Cache-Control": "no-cache",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch SVG: ${response.statusText}`);
-      }
-
-      const svgText = await response.text();
-
-      // Create a sanitized SVG blob
-      const sanitizedSvg = new Blob([svgText], { type: "image/svg+xml" });
-      const blobUrl = URL.createObjectURL(sanitizedSvg);
-
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        let cleaned = false;
-
-        const cleanup = () => {
-          if (!cleaned) {
-            cleaned = true;
-            URL.revokeObjectURL(blobUrl);
-          }
-        };
-
-        // Set a timeout for the entire operation
-        const timeoutId = setTimeout(() => {
-          cleanup();
-          reject(new Error("SVG conversion timed out"));
-        }, 10000);
-
-        img.onload = () => {
-          try {
-            // Create a canvas with maximum mobile-friendly dimensions
-            const maxDimension = 2048; // Max texture size for most mobile devices
-            const scale = Math.min(
-              1,
-              maxDimension / img.width,
-              maxDimension / img.height
-            );
-
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
-
-            const ctx = canvas.getContext("2d", {
-              alpha: true,
-              willReadFrequently: true,
-            });
-
-            if (!ctx) {
-              throw new Error("Canvas context creation failed");
-            }
-
-            // Draw with white background to prevent transparency issues
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Draw the image
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            // Convert to PNG with lower quality for mobile
-            const pngUrl = canvas.toDataURL("image/png", 0.8);
-
-            // Cache the result
-            imageCache.set(svgUrl, pngUrl);
-
-            clearTimeout(timeoutId);
-            cleanup();
-            resolve(pngUrl);
-          } catch (err) {
-            cleanup();
-            clearTimeout(timeoutId);
-            reject(new Error(`Canvas operation failed: ${err.message}`));
-          }
-        };
-
-        img.onerror = (err) => {
-          cleanup();
-          clearTimeout(timeoutId);
-          reject(
-            new Error(`Image loading failed: ${err.message || "Unknown error"}`)
-          );
-        };
-
-        // Set crossOrigin after setting up event handlers
-        img.crossOrigin = "anonymous";
-        img.src = blobUrl;
-      });
-    } catch (error) {
-      console.error("SVG conversion error:", error);
-      throw error;
-    }
+  const convertSvgToPng = async (svgUrl) => {
+    const response = await fetch(svgUrl);
+    const svgText = await response.text();
+    const svg = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svg);
+    const img = new Image();
+    return new Promise((resolve, reject) => {
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
   };
 
   const prepareImageForPdf = async (src) => {
-    if (!src) return null;
-
-    try {
-      const fileExtension = src.split(".").pop().toLowerCase();
-
-      // Handle SVG files
-      if (fileExtension === "svg") {
-        try {
-          return await convertSvgToImg(src);
-        } catch (svgError) {
-          console.error(
-            "SVG conversion failed, attempting fallback:",
-            svgError
-          );
-          // Fallback: Try loading as regular image
-          return await loadImageAsDataUrl(src);
-        }
-      }
-
-      // Handle other image types
-      return await loadImageAsDataUrl(src);
-    } catch (error) {
-      console.error("Image preparation failed:", error);
-      throw new Error(`Image preparation failed: ${error.message}`);
+    const fileExtension = src.split(".").pop().toLowerCase();
+    if (fileExtension === "gif") {
+      return await convertImageToPng(src);
+    } else if (fileExtension === "svg") {
+      return await convertSvgToPng(src);
     }
-  };
-
-  const loadImageAsDataUrl = async (src) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const timeoutId = setTimeout(() => {
-        reject(new Error("Image loading timed out"));
-      }, 10000);
-
-      img.onload = () => {
-        try {
-          clearTimeout(timeoutId);
-          const canvas = document.createElement("canvas");
-          const maxDimension = 2048;
-          const scale = Math.min(
-            1,
-            maxDimension / img.width,
-            maxDimension / img.height
-          );
-
-          canvas.width = img.width * scale;
-          canvas.height = img.height * scale;
-
-          const ctx = canvas.getContext("2d", {
-            alpha: true,
-            willReadFrequently: true,
-          });
-
-          if (!ctx) {
-            throw new Error("Canvas context creation failed");
-          }
-
-          ctx.fillStyle = "#FFFFFF";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          resolve(canvas.toDataURL("image/png", 0.8));
-        } catch (err) {
-          reject(new Error(`Canvas operation failed: ${err.message}`));
-        }
-      };
-
-      img.onerror = () => {
-        clearTimeout(timeoutId);
-        reject(new Error("Image loading failed"));
-      };
-
-      img.crossOrigin = "anonymous";
-      img.src = src;
-    });
+    return src; // Return original source for other image types
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
@@ -577,7 +419,6 @@ export const PDFDownloadButton = ({
 
   const generatePDF = async (cardData, messages, options) => {
     try {
-      imageCache.clear();
       const pdfDoc = await generatePDFContent(cardData, messages, options);
       const blob = await pdf(pdfDoc).toBlob();
       const url = URL.createObjectURL(blob);
