@@ -243,19 +243,122 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const convertSvgToPng = async (svgUrl) => {
+  const convertMessageSvg = async (svgUrl) => {
+    try {
+      // Create an invisible div to render the SVG
+      const container = document.createElement("div");
+      container.style.position = "absolute";
+      container.style.visibility = "hidden";
+      container.style.pointerEvents = "none";
+      document.body.appendChild(container);
+
+      // Fetch SVG content
+      const response = await fetch(svgUrl);
+      const svgText = await response.text();
+
+      // Insert SVG into container
+      container.innerHTML = svgText;
+      const svgElement = container.querySelector("svg");
+
+      if (!svgElement) {
+        throw new Error("No SVG element found");
+      }
+
+      // Get SVG dimensions
+      const bbox = svgElement.getBBox();
+      const width = bbox.width || svgElement.width.baseVal.value || 1000;
+      const height = bbox.height || svgElement.height.baseVal.value || 1000;
+
+      // Convert SVG to string
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgElement);
+
+      // Create SVG blob
+      const blob = new Blob([svgString], {
+        type: "image/svg+xml;charset=utf-8",
+      });
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Create image and canvas
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error("SVG conversion timed out"));
+        }, 10000);
+
+        function cleanup() {
+          URL.revokeObjectURL(blobUrl);
+          document.body.removeChild(container);
+        }
+
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            // Set reasonable maximum dimensions
+            const maxSize = 2048;
+            const scale = Math.min(1, maxSize / width, maxSize / height);
+
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            const pngUrl = canvas.toDataURL("image/png");
+            clearTimeout(timeoutId);
+            cleanup();
+            resolve(pngUrl);
+          } catch (err) {
+            cleanup();
+            clearTimeout(timeoutId);
+            reject(err);
+          }
+        };
+
+        img.onerror = (err) => {
+          cleanup();
+          clearTimeout(timeoutId);
+          reject(err);
+        };
+
+        img.src = blobUrl;
+      });
+    } catch (error) {
+      console.error("Message SVG conversion error:", error);
+      throw error;
+    }
+  };
+
+  const convertCoverSvg = async (svgUrl) => {
     const response = await fetch(svgUrl);
     const svgText = await response.text();
-    const svg = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svg);
-    const img = new Image();
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+    const svgElement = svgDoc.documentElement;
+
+    // Get the viewBox attributes
+    const viewBox = svgElement.getAttribute("viewBox");
+    const [, , width, height] = viewBox
+      ? viewBox.split(" ").map(Number)
+      : [null, null, 1000, 1000];
+
+    // Create a high-resolution canvas
+    const canvas = document.createElement("canvas");
+    const scale = 2; // Increase this for higher resolution
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+
+    const ctx = canvas.getContext("2d");
+    const blob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
     return new Promise((resolve, reject) => {
+      const img = new Image();
       img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/png"));
         URL.revokeObjectURL(url);
       };
@@ -264,12 +367,14 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const prepareImageForPdf = async (src) => {
+  const prepareImageForPdf = async (src, isMessage = false) => {
     const fileExtension = src.split(".").pop().toLowerCase();
     if (fileExtension === "gif") {
       return await convertImageToPng(src);
     } else if (fileExtension === "svg") {
-      return await convertSvgToPng(src);
+      return isMessage
+        ? await convertMessageSvg(src)
+        : await convertCoverSvg(src);
     }
     return src; // Return original source for other image types
   };
@@ -368,7 +473,10 @@ export const PDFDownloadButton = ({
         }).map((_, index) => (
           <Page key={index + 1} size="A4">
             <View style={{ width: "100%", height: "100%" }}>
-              <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
+              <PDFImage
+                src={cardBg}
+                style={{ width: "100%", height: "100%" }}
+              />
               {preparedMessages
                 .filter(({ page }) => page === index + 1)
                 .map((message, messageIndex) => {
