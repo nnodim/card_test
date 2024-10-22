@@ -303,7 +303,7 @@ export const PDFDownloadButton = ({
             canvas.height = height * scale;
 
             const ctx = canvas.getContext("2d");
-            ctx.fillStyle = "#FFFFFF";
+            ctx.fillStyle = "#FFFFFF00";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
@@ -381,13 +381,13 @@ export const PDFDownloadButton = ({
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
-    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
+    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url, false);
 
     // Convert custom images if present
     const customImages = await Promise.all(
       (cardData.card.meta?.images || []).map(async (image) => ({
         ...image,
-        content: await prepareImageForPdf(image.content),
+        content: await prepareImageForPdf(image.content, false),
       }))
     );
 
@@ -399,7 +399,7 @@ export const PDFDownloadButton = ({
         }
         return {
           ...message,
-          content: await prepareImageForPdf(message.content),
+          content: await prepareImageForPdf(message.content, true),
         };
       })
     );
