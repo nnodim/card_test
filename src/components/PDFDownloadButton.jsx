@@ -9,26 +9,23 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import {
-  Document,
-  Font,
-  Image as PDFImage,
-  Page,
-  pdf,
-  Text,
-  View,
-} from "@react-pdf/renderer";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-import { Download, Loader2 } from "lucide-react";
-import PropTypes from "prop-types";
-import DOMPurify from "dompurify";
-import parse from "html-react-parser";
-import { useEffect, useState } from "react";
-import {
   BoldFont,
   BoldItalicFont,
   RegularFont,
 } from "@/fonts/Montserrat/static";
+import {
+  Document,
+  Font,
+  Page,
+  pdf,
+  Image as PDFImage,
+  Text,
+  View,
+} from "@react-pdf/renderer";
+import DOMPurify from "dompurify";
+import { Download, Loader2 } from "lucide-react";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 Font.register({
   family: "Montserrat",
@@ -47,6 +44,10 @@ Font.register({
     },
   ],
 });
+
+const PDF_WIDTH = 596;  // Standard A4 width in points
+const PDF_HEIGHT = 842; // Standard A4 height in points
+const CARD_ASPECT_RATIO = 480 / 678;
 
 export const PDFDownloadButton = ({
   contentRef,
@@ -243,96 +244,7 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const convertMessageSvg = async (svgUrl) => {
-    try {
-      // Create an invisible div to render the SVG
-      const container = document.createElement("div");
-      container.style.position = "absolute";
-      container.style.visibility = "hidden";
-      container.style.pointerEvents = "none";
-      document.body.appendChild(container);
-
-      // Fetch SVG content
-      const response = await fetch(svgUrl);
-      const svgText = await response.text();
-
-      // Insert SVG into container
-      container.innerHTML = svgText;
-      const svgElement = container.querySelector("svg");
-
-      if (!svgElement) {
-        throw new Error("No SVG element found");
-      }
-
-      // Get SVG dimensions
-      const bbox = svgElement.getBBox();
-      const width = bbox.width || svgElement.width.baseVal.value || 1000;
-      const height = bbox.height || svgElement.height.baseVal.value || 1000;
-
-      // Convert SVG to string
-      const serializer = new XMLSerializer();
-      const svgString = serializer.serializeToString(svgElement);
-
-      // Create SVG blob
-      const blob = new Blob([svgString], {
-        type: "image/svg+xml;charset=utf-8",
-      });
-      const blobUrl = URL.createObjectURL(blob);
-
-      // Create image and canvas
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        const timeoutId = setTimeout(() => {
-          cleanup();
-          reject(new Error("SVG conversion timed out"));
-        }, 10000);
-
-        function cleanup() {
-          URL.revokeObjectURL(blobUrl);
-          document.body.removeChild(container);
-        }
-
-        img.onload = () => {
-          try {
-            const canvas = document.createElement("canvas");
-            // Set reasonable maximum dimensions
-            const maxSize = 2048;
-            const scale = Math.min(1, maxSize / width, maxSize / height);
-
-            canvas.width = width * scale;
-            canvas.height = height * scale;
-
-            const ctx = canvas.getContext("2d");
-            ctx.fillStyle = "#FFFFFF00";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            const pngUrl = canvas.toDataURL("image/png");
-            clearTimeout(timeoutId);
-            cleanup();
-            resolve(pngUrl);
-          } catch (err) {
-            cleanup();
-            clearTimeout(timeoutId);
-            reject(err);
-          }
-        };
-
-        img.onerror = (err) => {
-          cleanup();
-          clearTimeout(timeoutId);
-          reject(err);
-        };
-
-        img.src = blobUrl;
-      });
-    } catch (error) {
-      console.error("Message SVG conversion error:", error);
-      throw error;
-    }
-  };
-
-  const convertCoverSvg = async (svgUrl) => {
+  const convertSvgToPng = async (svgUrl) => {
     const response = await fetch(svgUrl);
     const svgText = await response.text();
     const parser = new DOMParser();
@@ -367,27 +279,25 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const prepareImageForPdf = async (src, isMessage = false) => {
+  const prepareImageForPdf = async (src) => {
     const fileExtension = src.split(".").pop().toLowerCase();
     if (fileExtension === "gif") {
       return await convertImageToPng(src);
     } else if (fileExtension === "svg") {
-      return isMessage
-        ? await convertMessageSvg(src)
-        : await convertCoverSvg(src);
+      return await convertSvgToPng(src);
     }
     return src; // Return original source for other image types
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
-    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url, false);
+    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
 
     // Convert custom images if present
     const customImages = await Promise.all(
       (cardData.card.meta?.images || []).map(async (image) => ({
         ...image,
-        content: await prepareImageForPdf(image.content, false),
+        content: await prepareImageForPdf(image.content),
       }))
     );
 
@@ -399,7 +309,7 @@ export const PDFDownloadButton = ({
         }
         return {
           ...message,
-          content: await prepareImageForPdf(message.content, true),
+          content: await prepareImageForPdf(message.content),
         };
       })
     );
@@ -418,9 +328,9 @@ export const PDFDownloadButton = ({
                 style={{
                   position: "absolute",
                   left: `${(cardData.card.meta.message.x / 480) * 100}%`,
-                  top: `${(cardData.card.meta.message.y / 678) * 100}%`,
+                  top: `${(cardData.card.meta.message.y / PDF_HEIGHT) * 100}%`,
                   width: `${(cardData.card.meta.message.width / 480) * 100}%`,
-                  height: `${(cardData.card.meta.message.height / 678) * 100}%`,
+                  height: `${(cardData.card.meta.message.height / PDF_HEIGHT) * 100}%`,
                 }}
               >
                 <Text
@@ -450,9 +360,9 @@ export const PDFDownloadButton = ({
                 style={{
                   position: "absolute",
                   left: `${(image.x / 480) * 100}%`,
-                  top: `${(image.y / 670) * 100}%`,
+                  top: `${(image.y / PDF_HEIGHT) * 100}%`,
                   width: `${(image.width / 480) * 100}%`,
-                  height: `${(image.height / 670) * 100}%`,
+                  height: `${(image.height / PDF_HEIGHT) * 100}%`,
                 }}
               >
                 <PDFImage
@@ -473,10 +383,7 @@ export const PDFDownloadButton = ({
         }).map((_, index) => (
           <Page key={index + 1} size="A4">
             <View style={{ width: "100%", height: "100%" }}>
-              <PDFImage
-                src={cardBg}
-                style={{ width: "100%", height: "100%" }}
-              />
+              <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
               {preparedMessages
                 .filter(({ page }) => page === index + 1)
                 .map((message, messageIndex) => {
@@ -492,7 +399,8 @@ export const PDFDownloadButton = ({
                             color: message.fontColor,
                             fontSize: parseInt(message.fontSize),
                             textAlign: message.textAlign,
-                            lineHeight: 1.5,
+                            paddingTop: 10,
+                            paddingBottom: 10,
                           }}
                         >
                           {textSections.map((section, i) => (

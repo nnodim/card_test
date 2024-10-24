@@ -241,7 +241,7 @@ Drag and drop your signature to a free spot or Change pages by using the arrows 
                                         <>{parse(cleanHTML)}</>
                                       ) : (
                                         <img
-                                          className="w-full h-full object-cover object-center rounded-lg"
+                                          className="w-full h-full object-contain object-center"
                                           src={content}
                                           alt=""
                                         />

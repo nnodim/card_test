@@ -248,7 +248,7 @@ export const ViewCard = () => {
                                           <>{parse(cleanHTML)}</>
                                         ) : (
                                           <img
-                                            className="w-full h-full object-cover object-center"
+                                            className="w-full h-full object-contain object-center"
                                             src={content}
                                             alt=""
                                           />
