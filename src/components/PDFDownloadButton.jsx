@@ -150,99 +150,69 @@ export const PDFDownloadButton = ({
   };
 
   const loadImageWithRetry = async (url, retries = 3) => {
-    let lastError;
+    if (!url) return null;
+
     const fileExtension = url.split(".").pop().toLowerCase();
-    const needsConversion = ["gif", "svg"].includes(fileExtension);
+    if (!["png", "jpg", "jpeg", "gif", "svg"].includes(fileExtension)) {
+      console.error("Invalid image extension:", fileExtension);
+      return null;
+    }
+
+    // Create Cloudinary URL with optimization parameters
+    const optimizedUrl = url.includes("cloudinary.com")
+      ? `${url}?f=auto&q=auto&w=1000&t=${Date.now()}`
+      : url;
 
     for (let i = 0; i < retries; i++) {
       try {
-        // Check if image is already in cache
-        if (imageCache.has(url)) {
-          return imageCache.get(url);
-        }
+        // Use fetch API instead of XMLHttpRequest
+        const response = await fetch(optimizedUrl);
+        if (!response.ok)
+          throw new Error(`HTTP error! status: ${response.status}`);
 
-        const proxyUrl = getProxyImageUrl(url);
-
-        // Use XMLHttpRequest for better mobile support
-        const base64Data = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onload = function () {
-            if (this.status === 200) {
-              const reader = new FileReader();
-              reader.onloadend = async () => {
-                try {
-                  const base64 = reader.result;
-                  // Convert if needed
-                  const finalImage = needsConversion
-                    ? await convertToValidFormat(base64, url)
-                    : base64;
-                  resolve(finalImage);
-                } catch (error) {
-                  reject(error);
-                }
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(this.response);
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            // For SVGs, we need to ensure proper conversion
+            if (fileExtension === "svg") {
+              resolve(convertSvgToDataUrl(reader.result));
             } else {
-              reject(new Error(`HTTP ${this.status}`));
+              resolve(reader.result);
             }
           };
-          xhr.onerror = reject;
-          xhr.open("GET", proxyUrl);
-          xhr.responseType = "blob";
-          xhr.send();
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
         });
-
-        // Cache the result
-        imageCache.set(url, base64Data);
-        return base64Data;
       } catch (error) {
         console.warn(`Attempt ${i + 1} failed for ${url}:`, error);
-        lastError = error;
-
-        // On mobile, try alternative loading method if XHR fails
-        if (isMobile() && i === retries - 1) {
-          try {
-            // Fallback to image element loading
-            const imgData = await new Promise((resolve, reject) => {
-              const img = new Image();
-              img.crossOrigin = "anonymous";
-              img.onload = async () => {
-                const canvas = document.createElement("canvas");
-                canvas.width = img.width;
-                canvas.height = img.height;
-                const ctx = canvas.getContext("2d");
-
-                // For SVG backgrounds, ensure we fill with white first
-                if (url.toLowerCase().endsWith(".svg")) {
-                  ctx.fillStyle = "white";
-                  ctx.fillRect(0, 0, canvas.width, canvas.height);
-                }
-
-                ctx.drawImage(img, 0, 0);
-                const base64 = canvas.toDataURL("image/png");
-                resolve(base64);
-              };
-              img.onerror = reject;
-              img.src = getProxyImageUrl(url);
-            });
-
-            imageCache.set(url, imgData);
-            return imgData;
-          } catch (fallbackError) {
-            console.error("Fallback loading failed:", fallbackError);
-            throw fallbackError;
-          }
+        if (i === retries - 1) {
+          console.error("All retries failed for:", url);
+          return null;
         }
-
-        // Wait before retrying
         await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
       }
     }
-
-    throw lastError;
+    return null;
   };
 
+  const convertSvgToDataUrl = async (svgData) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width || 800; // Fallback width
+        canvas.height = img.height || 600; // Fallback height
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff00";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = svgData;
+    });
+  };
   // Modified image loading check
   useEffect(() => {
     const checkImagesLoaded = async () => {
