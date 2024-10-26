@@ -60,6 +60,7 @@ export const PDFDownloadButton = ({
 }) => {
   const [saving, setSaving] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [imageCache, setImageCache] = useState(new Map());
   const { toast } = useToast();
 
   const calculateResponsiveStyles = (message) => {
@@ -88,34 +89,158 @@ export const PDFDownloadButton = ({
   };
 
   // Check if images within contentRef are fully loaded
-  const loadImageAsBase64 = async (url) => {
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
+  };
+
+  // Function to create a proxy URL for Cloudinary images
+  const getProxyImageUrl = (url) => {
+    if (url.includes("cloudinary.com")) {
+      // Add format-auto and quality-auto parameters
+      const cloudinaryUrl = new URL(url);
+      cloudinaryUrl.searchParams.set("f", "auto");
+      cloudinaryUrl.searchParams.set("q", "auto");
+      // Add timestamp to prevent caching issues
+      cloudinaryUrl.searchParams.set("t", Date.now());
+      return cloudinaryUrl.toString();
+    }
+    return url;
+  };
+
+  const convertToValidFormat = async (base64String, originalUrl) => {
     try {
-      const response = await fetch(url, {
-        mode: "cors",
-        credentials: "omit",
+      // If it's already a PNG or JPEG, return as is
+      if (
+        base64String.includes("data:image/png;base64,") ||
+        base64String.includes("data:image/jpeg;base64,")
+      ) {
+        return base64String;
+      }
+
+      // Create an image element to draw to canvas
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = base64String;
       });
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+
+      // Create canvas and convert to PNG
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+
+      // For SVG backgrounds, ensure we fill with white first
+      if (originalUrl?.toLowerCase().endsWith(".svg")) {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      ctx.drawImage(img, 0, 0);
+
+      // Convert to PNG
+      return canvas.toDataURL("image/png");
     } catch (error) {
-      console.error("Error loading image:", error);
-      throw error;
+      console.error("Error converting image format:", error);
+      throw new Error("Failed to convert image format");
     }
   };
 
-  const optimizeCloudinaryUrl = (url) => {
-    if (url.includes("cloudinary.com")) {
-      // Add auto format and quality parameters
-      const optimizedUrl = new URL(url);
-      optimizedUrl.searchParams.set("f", "auto");
-      optimizedUrl.searchParams.set("q", "auto");
-      return optimizedUrl.toString();
+  const loadImageWithRetry = async (url, retries = 3) => {
+    let lastError;
+    const fileExtension = url.split(".").pop().toLowerCase();
+    const needsConversion = ["gif", "svg"].includes(fileExtension);
+
+    for (let i = 0; i < retries; i++) {
+      try {
+        // Check if image is already in cache
+        if (imageCache.has(url)) {
+          return imageCache.get(url);
+        }
+
+        const proxyUrl = getProxyImageUrl(url);
+
+        // Use XMLHttpRequest for better mobile support
+        const base64Data = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onload = function () {
+            if (this.status === 200) {
+              const reader = new FileReader();
+              reader.onloadend = async () => {
+                try {
+                  const base64 = reader.result;
+                  // Convert if needed
+                  const finalImage = needsConversion
+                    ? await convertToValidFormat(base64, url)
+                    : base64;
+                  resolve(finalImage);
+                } catch (error) {
+                  reject(error);
+                }
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(this.response);
+            } else {
+              reject(new Error(`HTTP ${this.status}`));
+            }
+          };
+          xhr.onerror = reject;
+          xhr.open("GET", proxyUrl);
+          xhr.responseType = "blob";
+          xhr.send();
+        });
+
+        // Cache the result
+        imageCache.set(url, base64Data);
+        return base64Data;
+      } catch (error) {
+        console.warn(`Attempt ${i + 1} failed for ${url}:`, error);
+        lastError = error;
+
+        // On mobile, try alternative loading method if XHR fails
+        if (isMobile() && i === retries - 1) {
+          try {
+            // Fallback to image element loading
+            const imgData = await new Promise((resolve, reject) => {
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              img.onload = async () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext("2d");
+
+                // For SVG backgrounds, ensure we fill with white first
+                if (url.toLowerCase().endsWith(".svg")) {
+                  ctx.fillStyle = "white";
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                }
+
+                ctx.drawImage(img, 0, 0);
+                const base64 = canvas.toDataURL("image/png");
+                resolve(base64);
+              };
+              img.onerror = reject;
+              img.src = getProxyImageUrl(url);
+            });
+
+            imageCache.set(url, imgData);
+            return imgData;
+          } catch (fallbackError) {
+            console.error("Fallback loading failed:", fallbackError);
+            throw fallbackError;
+          }
+        }
+
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+      }
     }
-    return url;
+
+    throw lastError;
   };
 
   // Modified image loading check
@@ -324,24 +449,28 @@ export const PDFDownloadButton = ({
   //   return src; // Return original source for other image types
   // };
 
-  const prepareImageForPdf = async (src) => {
-    try {
-      const optimizedUrl = optimizeCloudinaryUrl(src);
-      const fileExtension = src.split(".").pop().toLowerCase();
+  
+const prepareImageForPdf = async (src) => {
+  if (!src) return null;
 
-      if (fileExtension === "gif") {
-        return await convertImageToPng(optimizedUrl);
-      } else if (fileExtension === "svg") {
-        return await convertSvgToPng(optimizedUrl);
-      }
+  try {
+    console.log("Preparing image:", src);
+    const fileExtension = src.split(".").pop().toLowerCase();
 
-      // Convert all images to base64 to ensure they load in PDF
-      return await loadImageAsBase64(optimizedUrl);
-    } catch (error) {
-      console.error("Error preparing image:", error);
-      throw error;
+    // Validate file extension
+    if (!["png", "jpg", "jpeg", "gif", "svg"].includes(fileExtension)) {
+      console.error("Not valid image extension:", fileExtension);
+      return null;
     }
-  };
+
+    const base64Data = await loadImageWithRetry(src);
+    console.log("Image prepared successfully");
+    return base64Data;
+  } catch (error) {
+    console.error("Failed to prepare image:", src, error);
+    return null; // Return null instead of throwing to allow PDF generation to continue
+  }
+};
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
