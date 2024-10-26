@@ -45,6 +45,9 @@ Font.register({
   ],
 });
 
+const PDF_WIDTH = 596; // Standard A4 width in points
+const PDF_HEIGHT = 842;
+
 export const PDFDownloadButton = ({
   contentRef,
   // filename = "download.pdf",
@@ -85,6 +88,37 @@ export const PDFDownloadButton = ({
   };
 
   // Check if images within contentRef are fully loaded
+  const loadImageAsBase64 = async (url) => {
+    try {
+      const response = await fetch(url, {
+        mode: "cors",
+        credentials: "omit",
+      });
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error loading image:", error);
+      throw error;
+    }
+  };
+
+  const optimizeCloudinaryUrl = (url) => {
+    if (url.includes("cloudinary.com")) {
+      // Add auto format and quality parameters
+      const optimizedUrl = new URL(url);
+      optimizedUrl.searchParams.set("f", "auto");
+      optimizedUrl.searchParams.set("q", "auto");
+      return optimizedUrl.toString();
+    }
+    return url;
+  };
+
+  // Modified image loading check
   useEffect(() => {
     const checkImagesLoaded = async () => {
       if (!contentRef.current) return;
@@ -99,21 +133,26 @@ export const PDFDownloadButton = ({
         return;
       }
 
-      const areAllImagesLoaded = allImages.every((img) => img.complete);
-
-      if (areAllImagesLoaded) {
-        setImagesLoaded(true);
-      } else {
+      try {
         const loadPromises = allImages.map((img) => {
-          if (img.complete) return Promise.resolve();
           return new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
+            if (img.complete) {
+              resolve();
+            } else {
+              img.onload = resolve;
+              img.onerror = () => {
+                console.error("Failed to load image:", img.src);
+                resolve(); // Resolve anyway to prevent blocking
+              };
+            }
           });
         });
 
         await Promise.all(loadPromises);
         setImagesLoaded(true);
+      } catch (error) {
+        console.error("Error checking images:", error);
+        setImagesLoaded(true); // Set to true anyway to allow generation attempt
       }
     };
 
@@ -275,40 +314,55 @@ export const PDFDownloadButton = ({
     });
   };
 
+  // const prepareImageForPdf = async (src) => {
+  //   const fileExtension = src.split(".").pop().toLowerCase();
+  //   if (fileExtension === "gif") {
+  //     return await convertImageToPng(src);
+  //   } else if (fileExtension === "svg") {
+  //     return await convertSvgToPng(src);
+  //   }
+  //   return src; // Return original source for other image types
+  // };
+
   const prepareImageForPdf = async (src) => {
-    const fileExtension = src.split(".").pop().toLowerCase();
-    if (fileExtension === "gif") {
-      return await convertImageToPng(src);
-    } else if (fileExtension === "svg") {
-      return await convertSvgToPng(src);
+    try {
+      const optimizedUrl = optimizeCloudinaryUrl(src);
+      const fileExtension = src.split(".").pop().toLowerCase();
+
+      if (fileExtension === "gif") {
+        return await convertImageToPng(optimizedUrl);
+      } else if (fileExtension === "svg") {
+        return await convertSvgToPng(optimizedUrl);
+      }
+
+      // Convert all images to base64 to ensure they load in PDF
+      return await loadImageAsBase64(optimizedUrl);
+    } catch (error) {
+      console.error("Error preparing image:", error);
+      throw error;
     }
-    return src; // Return original source for other image types
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
-    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
-
-    // Convert custom images if present
-    const customImages = await Promise.all(
-      (cardData.card.meta?.images || []).map(async (image) => ({
-        ...image,
-        content: await prepareImageForPdf(image.content),
-      }))
-    );
-
-    // Convert message images
-    const preparedMessages = await Promise.all(
-      messages.map(async (message) => {
-        if (message.type === "text") {
-          return message;
-        }
-        return {
-          ...message,
-          content: await prepareImageForPdf(message.content),
-        };
-      })
-    );
+    const [cardImageSrc, customImages, preparedMessages] = await Promise.all([
+      prepareImageForPdf(cardData.card.card.url),
+      Promise.all(
+        (cardData.card.meta?.images || []).map(async (image) => ({
+          ...image,
+          content: await prepareImageForPdf(image.content),
+        }))
+      ),
+      Promise.all(
+        messages.map(async (message) => {
+          if (message.type === "text") return message;
+          return {
+            ...message,
+            content: await prepareImageForPdf(message.content),
+          };
+        })
+      ),
+    ]);
 
     return (
       <Document>
@@ -356,9 +410,9 @@ export const PDFDownloadButton = ({
                 style={{
                   position: "absolute",
                   left: `${(image.x / 480) * 100}%`,
-                  top: `${(image.y / 670) * 100}%`,
+                  top: `${(image.y / PDF_HEIGHT) * 100}%`,
                   width: `${(image.width / 480) * 100}%`,
-                  height: `${(image.height / 670) * 100}%`,
+                  height: `${(image.height / PDF_HEIGHT) * 100}%`,
                 }}
               >
                 <PDFImage
