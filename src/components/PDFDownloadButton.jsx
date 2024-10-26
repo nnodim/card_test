@@ -294,25 +294,25 @@ export const PDFDownloadButton = ({
     const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
 
     // Convert custom images if present
-    const customImages = await Promise.all(
-      (cardData.card.meta?.images || []).map(async (image) => ({
-        ...image,
-        content: await prepareImageForPdf(image.content),
-      }))
-    );
+    // const customImages = await Promise.all(
+    //   (cardData.card.meta?.images || []).map(async (image) => ({
+    //     ...image,
+    //     content: await prepareImageForPdf(image.content),
+    //   }))
+    // );
 
-    // Convert message images
-    const preparedMessages = await Promise.all(
-      messages.map(async (message) => {
-        if (message.type === "text") {
-          return message;
-        }
-        return {
-          ...message,
-          content: await prepareImageForPdf(message.content),
-        };
-      })
-    );
+    // // Convert message images
+    // const preparedMessages = await Promise.all(
+    //   messages.map(async (message) => {
+    //     if (message.type === "text") {
+    //       return message;
+    //     }
+    //     return {
+    //       ...message,
+    //       content: await prepareImageForPdf(message.content),
+    //     };
+    //   })
+    // );
 
     return (
       <Document>
@@ -323,7 +323,7 @@ export const PDFDownloadButton = ({
               src={cardImageSrc}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
-            {cardData.card.meta?.message && (
+            {cardData?.card?.meta?.message && (
               <View
                 style={{
                   position: "absolute",
@@ -354,7 +354,7 @@ export const PDFDownloadButton = ({
                 </Text>
               </View>
             )}
-            {customImages.map((image, index) => (
+            {cardData?.card?.meta?.images.map((image, index) => (
               <View
                 key={index}
                 style={{
@@ -379,12 +379,12 @@ export const PDFDownloadButton = ({
         </Page>
         {/* Subsequent pages with messages */}
         {Array.from({
-          length: Math.max(...preparedMessages.map((msg) => msg.page)),
+          length: Math.max(...messages.map((msg) => msg.page)),
         }).map((_, index) => (
           <Page key={index + 1} size="A4">
             <View style={{ width: "100%", height: "100%" }}>
               <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
-              {preparedMessages
+              {messages
                 .filter(({ page }) => page === index + 1)
                 .map((message, messageIndex) => {
                   const viewStyle = calculateResponsiveStyles(message, options);
