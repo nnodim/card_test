@@ -61,6 +61,7 @@ export const PDFDownloadButton = ({
 }) => {
   const [saving, setSaving] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [processedImages, setProcessedImages] = useState({});
   const { toast } = useToast();
 
   const calculateResponsiveStyles = (message) => {
@@ -89,50 +90,50 @@ export const PDFDownloadButton = ({
   };
 
   // Check if images within contentRef are fully loaded
-  useEffect(() => {
-    const checkImagesLoaded = async () => {
-      if (!contentRef.current) return;
+  // useEffect(() => {
+  //   const checkImagesLoaded = async () => {
+  //     if (!contentRef.current) return;
 
-      const slides = contentRef.current.querySelectorAll(".embla__slide");
-      const allImages = Array.from(slides).flatMap((slide) =>
-        Array.from(slide.getElementsByTagName("img"))
-      );
+  //     const slides = contentRef.current.querySelectorAll(".embla__slide");
+  //     const allImages = Array.from(slides).flatMap((slide) =>
+  //       Array.from(slide.getElementsByTagName("img"))
+  //     );
 
-      if (allImages.length === 0) {
-        setImagesLoaded(true);
-        return;
-      }
+  //     if (allImages.length === 0) {
+  //       setImagesLoaded(true);
+  //       return;
+  //     }
 
-      const areAllImagesLoaded = allImages.every((img) => img.complete);
+  //     const areAllImagesLoaded = allImages.every((img) => img.complete);
 
-      if (areAllImagesLoaded) {
-        setImagesLoaded(true);
-      } else {
-        const loadPromises = allImages.map((img) => {
-          if (img.complete) return Promise.resolve();
-          return new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
-          });
-        });
+  //     if (areAllImagesLoaded) {
+  //       setImagesLoaded(true);
+  //     } else {
+  //       const loadPromises = allImages.map((img) => {
+  //         if (img.complete) return Promise.resolve();
+  //         return new Promise((resolve) => {
+  //           img.onload = resolve;
+  //           img.onerror = resolve;
+  //         });
+  //       });
 
-        await Promise.all(loadPromises);
-        setImagesLoaded(true);
-      }
-    };
+  //       await Promise.all(loadPromises);
+  //       setImagesLoaded(true);
+  //     }
+  //   };
 
-    checkImagesLoaded();
+  //   checkImagesLoaded();
 
-    const observer = new MutationObserver(checkImagesLoaded);
-    if (contentRef.current) {
-      observer.observe(contentRef.current, {
-        childList: true,
-        subtree: true,
-      });
-    }
+  //   const observer = new MutationObserver(checkImagesLoaded);
+  //   if (contentRef.current) {
+  //     observer.observe(contentRef.current, {
+  //       childList: true,
+  //       subtree: true,
+  //     });
+  //   }
 
-    return () => observer.disconnect();
-  }, [contentRef]);
+  //   return () => observer.disconnect();
+  // }, [contentRef]);
 
   const convertHTMLToPDFText = (htmlString) => {
     const tempDiv = document.createElement("div");
@@ -279,14 +280,123 @@ export const PDFDownloadButton = ({
     });
   };
 
-  const prepareImageForPdf = async (src) => {
-    const fileExtension = src.split(".").pop().toLowerCase();
-    if (fileExtension === "gif") {
-      return await convertImageToPng(src);
-    } else if (fileExtension === "svg") {
-      return await convertSvgToPng(src);
+  useEffect(() => {
+    const checkImagesLoaded = async () => {
+      if (!contentRef.current) return;
+
+      try {
+        const slides = contentRef.current.querySelectorAll(".embla__slide");
+        const allImages = Array.from(slides).flatMap((slide) =>
+          Array.from(slide.getElementsByTagName("img"))
+        );
+
+        if (allImages.length === 0) {
+          setImagesLoaded(true);
+          return;
+        }
+
+        const loadPromises = allImages.map(
+          (img) =>
+            new Promise((resolve) => {
+              if (img.complete) {
+                resolve(true);
+              } else {
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+              }
+            })
+        );
+
+        await Promise.all(loadPromises);
+        setImagesLoaded(true);
+      } catch (error) {
+        console.error("Error checking images:", error);
+        setImagesLoaded(true); // Proceed anyway to avoid blocking
+      }
+    };
+
+    checkImagesLoaded();
+
+    const observer = new MutationObserver(checkImagesLoaded);
+    if (contentRef.current) {
+      observer.observe(contentRef.current, {
+        childList: true,
+        subtree: true,
+      });
     }
-    return src; // Return original source for other image types
+
+    return () => observer.disconnect();
+  }, [contentRef]);
+
+  // Enhanced image preparation function
+  const prepareImageForPdf = async (src) => {
+    try {
+      // Check if we already processed this image
+      if (processedImages[src]) {
+        return processedImages[src];
+      }
+
+      // Create a new image element
+      const img = new Image();
+
+      // Set crossOrigin to anonymous for CORS support
+      img.crossOrigin = "anonymous";
+
+      const imageLoadPromise = new Promise((resolve, reject) => {
+        img.onload = async () => {
+          try {
+            const canvas = document.createElement("canvas");
+            // Set canvas dimensions to match image
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            const ctx = canvas.getContext("2d");
+
+            // Draw image to canvas
+            ctx.drawImage(img, 0, 0);
+
+            // Get data URL
+            const dataUrl = canvas.toDataURL("image/png");
+
+            // Cache the processed image
+            setProcessedImages((prev) => ({
+              ...prev,
+              [src]: dataUrl,
+            }));
+
+            resolve(dataUrl);
+          } catch (error) {
+            console.error("Error processing image:", error);
+            reject(error);
+          }
+        };
+
+        img.onerror = (error) => {
+          console.error("Error loading image:", error);
+          reject(error);
+        };
+      });
+
+      // Set image source after setting up load handlers
+      img.src = src;
+
+      // Add a timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Image loading timeout")), 10000)
+      );
+
+      // Race between image loading and timeout
+      const processedImage = await Promise.race([
+        imageLoadPromise,
+        timeoutPromise,
+      ]);
+
+      return processedImage;
+    } catch (error) {
+      console.error("Error preparing image:", error);
+      // Return original source as fallback
+      return src;
+    }
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
@@ -294,25 +404,25 @@ export const PDFDownloadButton = ({
     const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
 
     // Convert custom images if present
-    // const customImages = await Promise.all(
-    //   (cardData.card.meta?.images || []).map(async (image) => ({
-    //     ...image,
-    //     content: await prepareImageForPdf(image.content),
-    //   }))
-    // );
+    const customImages = await Promise.all(
+      (cardData.card.meta?.images || []).map(async (image) => ({
+        ...image,
+        content: await prepareImageForPdf(image.content),
+      }))
+    );
 
-    // // Convert message images
-    // const preparedMessages = await Promise.all(
-    //   messages.map(async (message) => {
-    //     if (message.type === "text") {
-    //       return message;
-    //     }
-    //     return {
-    //       ...message,
-    //       content: await prepareImageForPdf(message.content),
-    //     };
-    //   })
-    // );
+    // Convert message images
+    const preparedMessages = await Promise.all(
+      messages.map(async (message) => {
+        if (message.type === "text") {
+          return message;
+        }
+        return {
+          ...message,
+          content: await prepareImageForPdf(message.content),
+        };
+      })
+    );
 
     return (
       <Document>
@@ -323,14 +433,14 @@ export const PDFDownloadButton = ({
               src={cardImageSrc}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
-            {cardData?.card?.meta?.message && (
+            {cardData.card.meta?.message && (
               <View
                 style={{
                   position: "absolute",
                   left: `${(cardData.card.meta.message.x / 480) * 100}%`,
-                  top: `${(cardData.card.meta.message.y / PDF_HEIGHT) * 100}%`,
+                  top: `${(cardData.card.meta.message.y / 678) * 100}%`,
                   width: `${(cardData.card.meta.message.width / 480) * 100}%`,
-                  height: `${(cardData.card.meta.message.height / PDF_HEIGHT) * 100}%`,
+                  height: `${(cardData.card.meta.message.height / 678) * 100}%`,
                 }}
               >
                 <Text
@@ -354,7 +464,7 @@ export const PDFDownloadButton = ({
                 </Text>
               </View>
             )}
-            {cardData?.card?.meta?.images.map((image, index) => (
+            {customImages.map((image, index) => (
               <View
                 key={index}
                 style={{
@@ -379,12 +489,12 @@ export const PDFDownloadButton = ({
         </Page>
         {/* Subsequent pages with messages */}
         {Array.from({
-          length: Math.max(...messages.map((msg) => msg.page)),
+          length: Math.max(...preparedMessages.map((msg) => msg.page)),
         }).map((_, index) => (
           <Page key={index + 1} size="A4">
             <View style={{ width: "100%", height: "100%" }}>
               <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
-              {messages
+              {preparedMessages
                 .filter(({ page }) => page === index + 1)
                 .map((message, messageIndex) => {
                   const viewStyle = calculateResponsiveStyles(message, options);
