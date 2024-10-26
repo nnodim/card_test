@@ -362,6 +362,7 @@ export const PDFDownloadButton = ({
                 }}
               >
                 <PDFImage
+                  cache={false}
                   src={image.content}
                   style={{
                     width: "100%",
@@ -379,7 +380,10 @@ export const PDFDownloadButton = ({
         }).map((_, index) => (
           <Page key={index + 1} size="A4">
             <View style={{ width: "100%", height: "100%" }}>
-              <PDFImage src={cardBg} style={{ width: "100%", height: "100%" }} />
+              <PDFImage
+                src={cardBg}
+                style={{ width: "100%", height: "100%" }}
+              />
               {preparedMessages
                 .filter(({ page }) => page === index + 1)
                 .map((message, messageIndex) => {
@@ -410,6 +414,7 @@ export const PDFDownloadButton = ({
                     return (
                       <View key={messageIndex} style={viewStyle}>
                         <PDFImage
+                          cache={false}
                           src={message.content}
                           style={{
                             width: "100%",
