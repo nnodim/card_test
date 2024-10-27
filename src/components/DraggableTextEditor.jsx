@@ -31,6 +31,13 @@ const DraggableTextEditor = ({
   const editorRef = useRef(null);
   const nodeRef = useRef(null);
 
+  // Base dimensions for scaling calculations
+  const BASE_WIDTH = 480;
+  const BASE_HEIGHT = 678;
+
+  // Calculate scale factor based on current dimensions
+  const scaleFactor = Math.min(width / BASE_WIDTH, height / BASE_HEIGHT);
+
   return (
     <Draggable
       nodeRef={nodeRef}
@@ -39,15 +46,17 @@ const DraggableTextEditor = ({
         x: (editingMessage?.xPercent / 100) * width,
         y: (editingMessage?.yPercent / 100) * height,
       }}
-      onStop={(e, data) =>
+      onStop={(e, data) => {
+        const xPercent = (data.x / width) * 100;
+        const yPercent = (data.y / height) * 100;
         setEditingMessage({
           ...editingMessage,
-          x: data.x,
-          y: data.y,
-          xPercent: (data.x / width) * 100,
-          yPercent: (data.y / height) * 100,
-        })
-      }
+          x: (xPercent / 100) * BASE_WIDTH,
+          y: (yPercent / 100) * BASE_HEIGHT,
+          xPercent,
+          yPercent,
+        });
+      }}
       onDrag={(e) => {
         e.stopPropagation();
       }}
@@ -66,27 +75,28 @@ const DraggableTextEditor = ({
         <MenuBar editor={editor} bgColor={bgColor} fontSizes={fontSizes} />
         <ResizableBox
           axis="both"
-          width={editingMessage?.width || 230}
+          width={editingMessage?.width * scaleFactor || 230 * scaleFactor}
           height={Infinity}
           id="text-editor"
           className="relative h-full"
           resizeHandles={["e"]}
-          minConstraints={[200, 50]}
-          maxConstraints={[maxWidth, Infinity]}
+          minConstraints={[200 * scaleFactor, 50 * scaleFactor]}
+          maxConstraints={[maxWidth * scaleFactor, Infinity]}
           onResizeStop={(e, { size: { width } }) => {
             if (editorContainerRef.current) {
               const rect = editorContainerRef.current.getBoundingClientRect();
-              return setEditingMessage({
+              const actualWidth = width / scaleFactor;
+              setEditingMessage({
                 ...editingMessage,
-                width,
-                height: rect.height,
+                width: actualWidth,
+                height: rect.height / scaleFactor,
               });
             }
           }}
           handle={<Handle />}
         >
           <div
-            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C4CFF] py-3 rounded-sm border border-[#7C4CFF] ring-offset-background"
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7C4CFF] py-3 rounded-sm border border-[#7C4CFF] ring-offset-background leading-none"
             style={{
               textAlign: editor.getAttributes("textStyle").textAlign || "left",
             }}
