@@ -13,6 +13,7 @@ import {
   BoldItalicFont,
   RegularFont,
 } from "@/fonts/Montserrat/static";
+import { getPDFFontFamily, registerPDFFonts } from "@/lib/font";
 import {
   Document,
   Font,
@@ -46,7 +47,7 @@ Font.register({
 });
 
 const PDF_WIDTH = 596; // Standard A4 width in points
-const PDF_HEIGHT = 842;
+const PDF_HEIGHT = 842; 
 
 export const PDFDownloadButton = ({
   contentRef,
@@ -60,7 +61,6 @@ export const PDFDownloadButton = ({
 }) => {
   const [saving, setSaving] = useState(false);
   const [imagesLoaded, setImagesLoaded] = useState(false);
-  const [imageCache, setImageCache] = useState(new Map());
   const { toast } = useToast();
 
   const calculateResponsiveStyles = (message) => {
@@ -80,7 +80,10 @@ export const PDFDownloadButton = ({
       height: `${(message.height / baseHeight) * 100}%`,
       fontSize: (parseFloat(message.fontSize) * scaleFactor).toFixed(),
       textAlign: message.textAlign,
-      fontFamily: message.fontFamily === "sans-serif" ? "" : message.fontFamily,
+      fontFamily:
+        message.fontFamily === "sans-serif"
+          ? ""
+          : getPDFFontFamily(message.fontFamily),
       fontWeight: message.bold ? "bold" : "normal",
       fontStyle: message.italic ? "italic" : "normal",
       color: message.fontColor,
@@ -88,132 +91,12 @@ export const PDFDownloadButton = ({
     };
   };
 
+  useEffect(() => {
+    registerPDFFonts().catch(console.error);
+  }, []);
+
+
   // Check if images within contentRef are fully loaded
-  const isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-  };
-
-  // Function to create a proxy URL for Cloudinary images
-  const getProxyImageUrl = (url) => {
-    if (url.includes("cloudinary.com")) {
-      // Add format-auto and quality-auto parameters
-      const cloudinaryUrl = new URL(url);
-      cloudinaryUrl.searchParams.set("f", "auto");
-      cloudinaryUrl.searchParams.set("q", "auto");
-      // Add timestamp to prevent caching issues
-      cloudinaryUrl.searchParams.set("t", Date.now());
-      return cloudinaryUrl.toString();
-    }
-    return url;
-  };
-
-  const convertToValidFormat = async (base64String, originalUrl) => {
-    try {
-      // If it's already a PNG or JPEG, return as is
-      if (
-        base64String.includes("data:image/png;base64,") ||
-        base64String.includes("data:image/jpeg;base64,")
-      ) {
-        return base64String;
-      }
-
-      // Create an image element to draw to canvas
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = base64String;
-      });
-
-      // Create canvas and convert to PNG
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-
-      // For SVG backgrounds, ensure we fill with white first
-      if (originalUrl?.toLowerCase().endsWith(".svg")) {
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
-      ctx.drawImage(img, 0, 0);
-
-      // Convert to PNG
-      return canvas.toDataURL("image/png");
-    } catch (error) {
-      console.error("Error converting image format:", error);
-      throw new Error("Failed to convert image format");
-    }
-  };
-
-  const loadImageWithRetry = async (url, retries = 3) => {
-    if (!url) return null;
-
-    const fileExtension = url.split(".").pop().toLowerCase();
-    if (!["png", "jpg", "jpeg", "gif", "svg"].includes(fileExtension)) {
-      console.error("Invalid image extension:", fileExtension);
-      return null;
-    }
-
-    // Create Cloudinary URL with optimization parameters
-    const optimizedUrl = url.includes("cloudinary.com")
-      ? `${url}?f=auto&q=auto&w=1000&t=${Date.now()}`
-      : url;
-
-    for (let i = 0; i < retries; i++) {
-      try {
-        // Use fetch API instead of XMLHttpRequest
-        const response = await fetch(optimizedUrl);
-        if (!response.ok)
-          throw new Error(`HTTP error! status: ${response.status}`);
-
-        const blob = await response.blob();
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            // For SVGs, we need to ensure proper conversion
-            if (fileExtension === "svg") {
-              resolve(convertSvgToDataUrl(reader.result));
-            } else {
-              resolve(reader.result);
-            }
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } catch (error) {
-        console.warn(`Attempt ${i + 1} failed for ${url}:`, error);
-        if (i === retries - 1) {
-          console.error("All retries failed for:", url);
-          return null;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
-      }
-    }
-    return null;
-  };
-
-  const convertSvgToDataUrl = async (svgData) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width || 800; // Fallback width
-        canvas.height = img.height || 600; // Fallback height
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#ffffff00";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = reject;
-      img.src = svgData;
-    });
-  };
-  // Modified image loading check
   useEffect(() => {
     const checkImagesLoaded = async () => {
       if (!contentRef.current) return;
@@ -228,26 +111,21 @@ export const PDFDownloadButton = ({
         return;
       }
 
-      try {
+      const areAllImagesLoaded = allImages.every((img) => img.complete);
+
+      if (areAllImagesLoaded) {
+        setImagesLoaded(true);
+      } else {
         const loadPromises = allImages.map((img) => {
+          if (img.complete) return Promise.resolve();
           return new Promise((resolve) => {
-            if (img.complete) {
-              resolve();
-            } else {
-              img.onload = resolve;
-              img.onerror = () => {
-                console.error("Failed to load image:", img.src);
-                resolve(); // Resolve anyway to prevent blocking
-              };
-            }
+            img.onload = resolve;
+            img.onerror = resolve;
           });
         });
 
         await Promise.all(loadPromises);
         setImagesLoaded(true);
-      } catch (error) {
-        console.error("Error checking images:", error);
-        setImagesLoaded(true); // Set to true anyway to allow generation attempt
       }
     };
 
@@ -409,59 +287,40 @@ export const PDFDownloadButton = ({
     });
   };
 
-  // const prepareImageForPdf = async (src) => {
-  //   const fileExtension = src.split(".").pop().toLowerCase();
-  //   if (fileExtension === "gif") {
-  //     return await convertImageToPng(src);
-  //   } else if (fileExtension === "svg") {
-  //     return await convertSvgToPng(src);
-  //   }
-  //   return src; // Return original source for other image types
-  // };
-
-  
-const prepareImageForPdf = async (src) => {
-  if (!src) return null;
-
-  try {
-    console.log("Preparing image:", src);
+  const prepareImageForPdf = async (src) => {
     const fileExtension = src.split(".").pop().toLowerCase();
-
-    // Validate file extension
-    if (!["png", "jpg", "jpeg", "gif", "svg"].includes(fileExtension)) {
-      console.error("Not valid image extension:", fileExtension);
-      return null;
+    if (fileExtension === "gif") {
+      return await convertImageToPng(src);
+    } else if (fileExtension === "svg") {
+      return await convertSvgToPng(src);
     }
-
-    const base64Data = await loadImageWithRetry(src);
-    console.log("Image prepared successfully");
-    return base64Data;
-  } catch (error) {
-    console.error("Failed to prepare image:", src, error);
-    return null; // Return null instead of throwing to allow PDF generation to continue
-  }
-};
+    return src; // Return original source for other image types
+  };
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
-    const [cardImageSrc, customImages, preparedMessages] = await Promise.all([
-      prepareImageForPdf(cardData.card.card.url),
-      Promise.all(
-        (cardData.card.meta?.images || []).map(async (image) => ({
-          ...image,
-          content: await prepareImageForPdf(image.content),
-        }))
-      ),
-      Promise.all(
-        messages.map(async (message) => {
-          if (message.type === "text") return message;
-          return {
-            ...message,
-            content: await prepareImageForPdf(message.content),
-          };
-        })
-      ),
-    ]);
+    const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
+
+    // Convert custom images if present
+    const customImages = await Promise.all(
+      (cardData.card.meta?.images || []).map(async (image) => ({
+        ...image,
+        content: await prepareImageForPdf(image.content),
+      }))
+    );
+
+    // Convert message images
+    const preparedMessages = await Promise.all(
+      messages.map(async (message) => {
+        if (message.type === "text") {
+          return message;
+        }
+        return {
+          ...message,
+          content: await prepareImageForPdf(message.content),
+        };
+      })
+    );
 
     return (
       <Document>
@@ -480,11 +339,13 @@ const prepareImageForPdf = async (src) => {
                   top: `${(cardData.card.meta.message.y / 678) * 100}%`,
                   width: `${(cardData.card.meta.message.width / 480) * 100}%`,
                   height: `${(cardData.card.meta.message.height / 678) * 100}%`,
+                  paddingTop: 10,
+                  paddingBottom: 10,
                 }}
               >
                 <Text
                   style={{
-                    // fontFamily: cardData.card.meta.message.fontFamily,
+                    fontFamily: getPDFFontFamily(cardData.card.meta.message.fontFamily),
                     fontSize: cardData.card.meta.message.fontSize,
                     color: cardData.card.meta.message.color,
                     textAlign: cardData.card.meta.message.textAlign,
@@ -553,6 +414,8 @@ const prepareImageForPdf = async (src) => {
                             fontSize: parseInt(message.fontSize),
                             textAlign: message.textAlign,
                             lineHeight: 1.5,
+                            paddingTop: 10,
+                            paddingBottom: 10,
                           }}
                         >
                           {textSections.map((section, i) => (
