@@ -47,7 +47,7 @@ Font.register({
 });
 
 const PDF_WIDTH = 596; // Standard A4 width in points
-const PDF_HEIGHT = 842; 
+const PDF_HEIGHT = 842;
 
 export const PDFDownloadButton = ({
   contentRef,
@@ -94,7 +94,6 @@ export const PDFDownloadButton = ({
   useEffect(() => {
     registerPDFFonts().catch(console.error);
   }, []);
-
 
   // Check if images within contentRef are fully loaded
   useEffect(() => {
@@ -277,6 +276,7 @@ export const PDFDownloadButton = ({
 
     return new Promise((resolve, reject) => {
       const img = new Image();
+      img.crossOrigin = "anonymous";
       img.onload = () => {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/png"));
@@ -288,13 +288,19 @@ export const PDFDownloadButton = ({
   };
 
   const prepareImageForPdf = async (src) => {
-    const fileExtension = src.split(".").pop().toLowerCase();
-    if (fileExtension === "gif") {
-      return await convertImageToPng(src);
-    } else if (fileExtension === "svg") {
-      return await convertSvgToPng(src);
+    try {
+      if (!src) return null;
+      const fileExtension = src.split(".").pop().toLowerCase();
+      if (fileExtension === "gif") {
+        return await convertImageToPng(src);
+      } else if (fileExtension === "svg") {
+        return await convertSvgToPng(src);
+      }
+      return src;
+    } catch (error) {
+      console.error("Error preparing image for PDF:", error);
+      return src;
     }
-    return src; // Return original source for other image types
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
@@ -345,7 +351,9 @@ export const PDFDownloadButton = ({
               >
                 <Text
                   style={{
-                    fontFamily: getPDFFontFamily(cardData.card.meta.message.fontFamily),
+                    fontFamily: getPDFFontFamily(
+                      cardData.card.meta.message.fontFamily
+                    ),
                     fontSize: cardData.card.meta.message.fontSize,
                     color: cardData.card.meta.message.color,
                     textAlign: cardData.card.meta.message.textAlign,
