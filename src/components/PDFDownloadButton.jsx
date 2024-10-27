@@ -291,12 +291,10 @@ export const PDFDownloadButton = ({
     try {
       if (!src) return null;
       const fileExtension = src.split(".").pop().toLowerCase();
-      if (fileExtension === "gif") {
-        return await convertImageToPng(src);
-      } else if (fileExtension === "svg") {
+      if (fileExtension === "svg") {
         return await convertSvgToPng(src);
       }
-      return src;
+      return await convertImageToPng(src);
     } catch (error) {
       console.error("Error preparing image for PDF:", error);
       return src;
@@ -306,13 +304,20 @@ export const PDFDownloadButton = ({
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
     const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
+    console.log(cardImageSrc);
+    
 
     // Convert custom images if present
     const customImages = await Promise.all(
-      (cardData.card.meta?.images || []).map(async (image) => ({
-        ...image,
-        content: await prepareImageForPdf(image.content),
-      }))
+      (cardData.card.meta?.images || []).map(async (image) => {
+
+        console.log(image.content, await prepareImageForPdf(image.content));
+        
+        return {
+          ...image,
+          content: await prepareImageForPdf(image.content),
+        };
+      })
     );
 
     // Convert message images
@@ -321,6 +326,9 @@ export const PDFDownloadButton = ({
         if (message.type === "text") {
           return message;
         }
+
+        console.log(message.content, await prepareImageForPdf(message.content));
+
         return {
           ...message,
           content: await prepareImageForPdf(message.content),
