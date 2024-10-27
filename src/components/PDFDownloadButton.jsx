@@ -413,7 +413,6 @@ export const PDFDownloadButton = ({
                             color: message.fontColor,
                             fontSize: parseInt(message.fontSize),
                             textAlign: message.textAlign,
-                            lineHeight: 1.5,
                             paddingTop: 10,
                             paddingBottom: 10,
                           }}
