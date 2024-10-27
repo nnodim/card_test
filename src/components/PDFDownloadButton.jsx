@@ -287,32 +287,36 @@ export const PDFDownloadButton = ({
     });
   };
 
+  const ensureHttps = (url) => {
+    if (url && url.startsWith("http://")) {
+      return url.replace("http://", "https://");
+    }
+    return url;
+  };
+
   const prepareImageForPdf = async (src) => {
+    if (!src) return null;
+    const url = ensureHttps(src);
+    console.log("Preparing image for PDF:", url);
+    
     try {
-      if (!src) return null;
-      const fileExtension = src.split(".").pop().toLowerCase();
+      const fileExtension = url.split(".").pop().toLowerCase();
       if (fileExtension === "svg") {
-        return await convertSvgToPng(src);
+        return await convertSvgToPng(url);
       }
-      return await convertImageToPng(src);
+      return await convertImageToPng(url);
     } catch (error) {
       console.error("Error preparing image for PDF:", error);
-      return src;
+      return url;
     }
   };
 
   const generatePDFContent = async (cardData, messages, options) => {
     // Convert card image if necessary
     const cardImageSrc = await prepareImageForPdf(cardData.card.card.url);
-    console.log(cardImageSrc);
-    
-
     // Convert custom images if present
     const customImages = await Promise.all(
       (cardData.card.meta?.images || []).map(async (image) => {
-
-        console.log(image.content, await prepareImageForPdf(image.content));
-        
         return {
           ...image,
           content: await prepareImageForPdf(image.content),
@@ -326,9 +330,6 @@ export const PDFDownloadButton = ({
         if (message.type === "text") {
           return message;
         }
-
-        console.log(message.content, await prepareImageForPdf(message.content));
-
         return {
           ...message,
           content: await prepareImageForPdf(message.content),
